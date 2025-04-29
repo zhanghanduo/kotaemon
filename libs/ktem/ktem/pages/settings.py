@@ -194,12 +194,6 @@ class SettingsPage(BasePage):
                 lambda: gr.Tabs(selected="chat-tab"),
                 outputs=self._app.tabs,
             )
-        self._components["reasoning.use"].change(
-            self.change_reasoning_mode,
-            inputs=[self._components["reasoning.use"]],
-            outputs=list(self._reasoning_mode.values()),
-            show_progress="hidden",
-        )
         if self._app.f_user_management and not KH_SSO_ENABLED:
             self.password_change_btn.click(
                 self.change_password,
@@ -308,26 +302,24 @@ class SettingsPage(BasePage):
         with gr.Tab("Reasoning settings", visible=self._render_reasoning_tab):
             with gr.Group():
                 for n, si in self._default_settings.reasoning.settings.items():
+                    setting_key = f"reasoning.{n}"
                     if n == "use":
                         continue
-                    obj = render_setting_item(si, si.value)
-                    self._components[f"reasoning.{n}"] = obj
-                    if si.special_type == "llm":
+                    if n == "llm_model":
+                        obj = gr.Textbox(value="openai", label=si.name, interactive=False)
+                    else:
+                        obj = render_setting_item(si, si.value)
+
+                    self._components[setting_key] = obj
+                    if si.special_type == "llm" and n != "llm_model":
                         self._llms.append(obj)
                     if si.special_type == "embedding":
                         self._embeddings.append(obj)
 
-            gr.Markdown("### Reasoning-specific settings")
-            self._components["reasoning.use"] = render_setting_item(
-                self._default_settings.reasoning.settings["use"],
-                self._default_settings.reasoning.settings["use"].value,
-            )
-
-            for idx, (pn, sig) in enumerate(
-                self._default_settings.reasoning.options.items()
-            ):
+            for pn, sig in self._default_settings.reasoning.options.items():
+                is_react = pn == 'react'
                 with gr.Group(
-                    visible=idx == 0,
+                    visible=is_react,
                     elem_id=pn,
                 ) as self._reasoning_mode[pn]:
                     reasoning = reasonings.get(pn, None)
@@ -336,22 +328,36 @@ class SettingsPage(BasePage):
                     else:
                         info = reasoning.get_info()
                         gr.Markdown(f"**{info['name']}**: {info['description']}")
-                    for n, si in sig.settings.items():
-                        obj = render_setting_item(si, si.value)
-                        self._components[f"reasoning.options.{pn}.{n}"] = obj
-                        if si.special_type == "llm":
-                            self._llms.append(obj)
-                        if si.special_type == "embedding":
-                            self._embeddings.append(obj)
 
-    def change_reasoning_mode(self, value):
-        output = []
-        for each in self._reasoning_mode.values():
-            if value == each.elem_id:
-                output.append(gr.update(visible=True))
-            else:
-                output.append(gr.update(visible=False))
-        return output
+                    if is_react:
+                        for n, si in sig.settings.items():
+                            setting_key = f"reasoning.options.{pn}.{n}"
+                            if n == "tools":
+                                original_choices = si.choices
+                                filtered_choices = [
+                                    choice for choice in original_choices
+                                    if choice not in ['wikipedia', 'google']
+                                ]
+                                current_value = si.value
+                                if isinstance(current_value, list):
+                                    filtered_value = [v for v in current_value if v in filtered_choices]
+                                else:
+                                    filtered_value = current_value if current_value in filtered_choices else (filtered_choices[0] if filtered_choices else None)
+
+                                obj = gr.CheckboxGroup(
+                                    label=si.name,
+                                    choices=filtered_choices,
+                                    value=filtered_value,
+                                    interactive=True
+                                )
+                            else:
+                                obj = render_setting_item(si, si.value)
+
+                            self._components[setting_key] = obj
+                            if si.special_type == "llm":
+                                self._llms.append(obj)
+                            if si.special_type == "embedding":
+                                self._embeddings.append(obj)
 
     def load_setting(self, user_id=None):
         settings = self._settings_dict

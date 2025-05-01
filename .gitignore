@@ -6,6 +6,9 @@ activate/*
 kotaemon-env*
 .env
 
+# 数据文件目录
+scripts/preprocessing/data/
+
 ### Emacs ###
 # -*- mode: gitignore; -*-
 *~
